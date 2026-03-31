@@ -56,6 +56,15 @@
         .sql-box { background: #0c1a0c; border: 1px solid #2a5a2a; border-radius: 12px; padding: 14px; font-size: 12px; color: #aaffaa; white-space: pre-wrap; font-family: monospace; margin-top: 12px; display: none; }
         .sql-box.show { display: block; }
     </style>
+    <link rel="manifest" href="manifest.json">
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js')
+      .then(() => console.log('Service Worker Registrado!'))
+      .catch(err => console.log('Erro no SW:', err));
+  }
+</script>
+
 </head>
 <body>
 
@@ -356,42 +365,4 @@ async function exportarDados() {
     const { data: regs } = await db.from('registros').select('*, unidades(chave)');
     const backup = {
         f1: JSON.stringify((regs||[]).filter(r=>r.unidades?.chave==='fazenda1').map(r=>({data:r.data, valor:r.valor_mm}))),
-        f2: JSON.stringify((regs||[]).filter(r=>r.unidades?.chave==='fazenda2').map(r=>({data:r.data, valor:r.valor_mm}))),
-        n:  JSON.stringify({ fazenda1: unidades['fazenda1']?.nome||'Fazenda 1', fazenda2: unidades['fazenda2']?.nome||'Fazenda 2' })
-    };
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)], {type:'application/json'}));
-    a.download = `chuvas_backup_${new Date().toISOString().slice(0,10)}.json`;
-    a.click();
-    showStatus('✅ Exportado!', 'ok');
-}
-
-async function importarDados(file) {
-    if (!file) return;
-    const backup = JSON.parse(await file.text());
-    const nomes = JSON.parse(backup.n||'{}');
-    const f1 = JSON.parse(backup.f1||'[]');
-    const f2 = JSON.parse(backup.f2||'[]');
-    showStatus(`⏳ Importando ${f1.length+f2.length} registros...`, 'info', 20000);
-    if (nomes.fazenda1) await db.from('unidades').update({nome:nomes.fazenda1}).eq('chave','fazenda1');
-    if (nomes.fazenda2) await db.from('unidades').update({nome:nomes.fazenda2}).eq('chave','fazenda2');
-    const upsert = async (lista, chave) => {
-        const uid = unidades[chave]?.id; if(!uid) return;
-        const rows = lista.map(item => ({unidade_id:uid, data:item.data, valor_mm:item.valor}));
-        if (rows.length) await db.from('registros').upsert(rows, {onConflict:'unidade_id,data'});
-    };
-    await upsert(f1,'fazenda1'); await upsert(f2,'fazenda2');
-    await carregarUnidades(); await atualizarUI();
-    showStatus(`✅ ${f1.length+f2.length} registros importados!`, 'ok');
-}
-
-async function limparTudo() {
-    if (!confirm('⚠️ Apagar TODOS os registros do banco?\n\nEsta ação não pode ser desfeita!')) return;
-    const { error } = await db.from('registros').delete().neq('id', 0);
-    if (error) { showStatus('❌ '+error.message,'err'); return; }
-    showStatus('🗑️ Todos os registros removidos.','info');
-    await atualizarUI();
-}
-</script>
-</body>
-</html>
+        f2: JSON.stringify((regs||[]).filter(r=>r.unidades?.chave==='fazenda2').map(r=>({data:r.data, valor:r.valor_mm})
