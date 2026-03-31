@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Pluviômetro Pro | Gestão de Chuvas</title>
+    <meta name="theme-color" content="#2e7d32">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        * { box-sizing: border-box; }
+        :root { --primary: #2e7d32; --accent: #66bb6a; --dark: #0a1a0a; --card: #152a15; --text: #e0e0e0; }
+        body { font-family: 'Segoe UI', Roboto, system-ui, sans-serif; background: #0a1a0a; color: var(--text); margin: 0; padding-bottom: 20px; }
+        header { padding: 18px 16px; text-align: center; background: rgba(0,0,0,0.8); border-bottom: 3px solid var(--primary); box-shadow: 0 4px 10px rgba(0,0,0,0.4); }
+        header h2 { margin: 0; font-size: 18px; letter-spacing: 1.5px; color: #fff; text-transform: uppercase; }
+        .container { max-width: 700px; margin: 0 auto; padding: 12px; }
+        .card { background: var(--card); padding: 18px 16px; border-radius: 20px; margin-bottom: 18px; border: 1px solid rgba(255,255,255,0.1); }
+        h3 { color: var(--accent); margin-top: 0; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+        .nome-fazenda-group { display: flex; gap: 10px; margin-bottom: 16px; }
+        .nome-fazenda-group div { flex: 1; background: #0c1a0c; padding: 8px 12px; border-radius: 12px; }
+        .nome-fazenda-group label { font-size: 10px; font-weight: bold; color: var(--accent); display: block; margin-bottom: 4px; }
+        .nome-fazenda-group input { background: transparent; border: none; border-bottom: 1px solid #3a5a3a; color: white; width: 100%; padding: 4px 0; font-size: 14px; }
+        .farm-selector { display: flex; gap: 8px; margin-bottom: 20px; }
+        .farm-btn { flex: 1; background: #1f3a1f; border: none; padding: 12px; border-radius: 40px; color: #aaa; font-weight: bold; cursor: pointer; font-size: 13px; transition: 0.3s; }
+        .farm-btn.active { background: var(--primary); color: white; box-shadow: 0 0 12px rgba(102,187,106,0.4); }
+        .input-group { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+        input[type="date"], input[type="number"] { background: #0c1a0c; color: white; border: 1px solid #2a4b2a; padding: 14px; border-radius: 14px; font-size: 16px; width: 100%; }
+        button.btn-main { background: linear-gradient(95deg, var(--primary), #3c9e40); color: white; font-weight: bold; padding: 16px; border: none; border-radius: 40px; width: 100%; cursor: pointer; font-size: 16px; margin-bottom: 12px; }
+        button.btn-main:disabled { opacity: 0.5; cursor: not-allowed; }
+        .stats-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 18px; }
+        .stat-box { background: rgba(0,0,0,0.4); padding: 14px; border-radius: 16px; text-align: center; border: 1px solid #2a4b2a; }
+        .stat-box small { font-size: 10px; color: #aaccaa; text-transform: uppercase; }
+        .stat-box b { display: block; font-size: 22px; color: var(--accent); margin-top: 5px; }
+        .btn-group { display: flex; gap: 8px; }
+        .btn-group button { flex: 1; padding: 12px; border: none; border-radius: 12px; color: white; font-size: 11px; font-weight: bold; cursor: pointer; }
+        #statusBar { position: fixed; bottom: 0; left: 0; right: 0; padding: 10px 16px; font-size: 13px; font-weight: bold; text-align: center; z-index: 999; transform: translateY(100%); transition: transform 0.3s; }
+        #statusBar.show { transform: translateY(0); }
+        #statusBar.ok   { background: #1b5e20; color: #a5d6a7; }
+        #statusBar.err  { background: #7f0000; color: #ffcdd2; }
+        #statusBar.info { background: #1a3a5a; color: #b3e4ff; }
+        #splash { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0a1a0a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; color: white; gap: 14px; }
+        #splash h2 { margin: 0; font-size: 22px; letter-spacing: 2px; }
+        #splashMsg { color: #66bb6a; font-size: 13px; }
+        canvas { max-height: 240px; width: 100%; margin-top: 10px; }
+        footer { text-align: center; font-size: 10px; opacity: 0.4; margin-top: 20px; padding-bottom: 10px; }
+        .registros-lista { margin-top: 10px; max-height: 220px; overflow-y: auto; }
+        .reg-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-radius: 10px; margin-bottom: 6px; background: rgba(0,0,0,0.3); font-size: 13px; }
+        .reg-data { color: #aaa; }
+        .reg-val  { color: var(--accent); font-weight: bold; }
+        .del-btn  { background: #6d1e1e; border: none; color: #ffaaaa; border-radius: 8px; padding: 4px 10px; cursor: pointer; font-size: 11px; }
+        /* SQL instructions box */
+        .sql-box { background: #0c1a0c; border: 1px solid #2a5a2a; border-radius: 12px; padding: 14px; font-size: 12px; color: #aaffaa; white-space: pre-wrap; font-family: monospace; margin-top: 12px; display: none; }
+        .sql-box.show { display: block; }
+    </style>
+</head>
+<body>
+
+<div id="splash">
+    <h2>🌧️ PLUVIÔMETRO</h2>
+    <small id="splashMsg">Conectando ao Supabase...</small>
+    <div id="sqlInstructions" style="display:none; max-width:90%; text-align:left; margin-top:10px;">
+        <p style="color:#ffaa66; font-size:12px; margin:0 0 8px;">⚠️ Tabelas não encontradas. Execute este SQL no Supabase → SQL Editor:</p>
+        <pre style="background:#0c2a0c; padding:12px; border-radius:10px; font-size:11px; color:#aaffaa; overflow-x:auto;">CREATE TABLE unidades (
+  id SERIAL PRIMARY KEY,
+  chave TEXT UNIQUE NOT NULL,
+  nome TEXT NOT NULL,
+  criado_em TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE registros (
+  id SERIAL PRIMARY KEY,
+  unidade_id INTEGER REFERENCES unidades(id),
+  data DATE NOT NULL,
+  valor_mm NUMERIC(6,1) NOT NULL CHECK (valor_mm >= 0),
+  criado_em TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(unidade_id, data)
+);
+
+INSERT INTO unidades (chave, nome) VALUES
+  ('fazenda1', 'Fazenda 1'),
+  ('fazenda2', 'Fazenda 2');
+
+ALTER TABLE unidades ENABLE ROW LEVEL SECURITY;
+ALTER TABLE registros ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "pub" ON unidades FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "pub" ON registros FOR ALL USING (true) WITH CHECK (true);</pre>
+        <p style="color:#aaa; font-size:11px; margin-top:8px;">Após executar, recarregue a página.</p>
+    </div>
+</div>
+
+<div id="statusBar"></div>
+<header><h2>🌦️ MONITORAMENTO AGRÍCOLA</h2></header>
+
+<div class="container">
+    <div class="card">
+        <div class="nome-fazenda-group">
+            <div><label>NOME DA UNIDADE 1</label><input type="text" id="nomeFazenda1" placeholder="Fazenda 1"></div>
+            <div><label>NOME DA UNIDADE 2</label><input type="text" id="nomeFazenda2" placeholder="Fazenda 2"></div>
+        </div>
+        <div class="farm-selector">
+            <button class="farm-btn active" id="btnFarm1" onclick="mudarFazenda('fazenda1')">Fazenda 1</button>
+            <button class="farm-btn" id="btnFarm2" onclick="mudarFazenda('fazenda2')">Fazenda 2</button>
+        </div>
+        <div class="input-group">
+            <input type="date" id="dataChuva">
+            <input type="number" id="valorChuva" placeholder="Chuva em mm" step="0.1" min="0">
+        </div>
+        <button class="btn-main" id="btnSalvar" onclick="lancar()">💾 SALVAR REGISTRO</button>
+        <div class="btn-group">
+            <button style="background:#1e5a8a;" onclick="exportarDados()">📥 EXPORTAR</button>
+            <button style="background:#2e6b2e;" onclick="document.getElementById('fileIn').click()">📤 IMPORTAR</button>
+            <button style="background:#9e3a2c;" onclick="limparTudo()">🗑️ LIMPAR TUDO</button>
+        </div>
+        <input type="file" id="fileIn" style="display:none" accept=".json" onchange="importarDados(this.files[0])">
+    </div>
+
+    <div class="card">
+        <h3>📋 Registros Recentes — <span id="labelUnidade">Fazenda 1</span></h3>
+        <div class="registros-lista" id="registrosLista">
+            <p style="color:#555; font-size:13px; text-align:center; margin:20px 0;">Carregando...</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <h3>📈 Evolução Diária (Mês Atual)</h3>
+        <div class="stats-row">
+            <div class="stat-box"><small>Total Acumulado</small><b id="totalMes">0 mm</b></div>
+            <div class="stat-box"><small>Maior Evento</small><b id="picoMes">0 mm</b></div>
+        </div>
+        <canvas id="chartDiario"></canvas>
+    </div>
+
+    <div class="card">
+        <h3>📅 Acumulado por Mês</h3>
+        <canvas id="chartMensal"></canvas>
+    </div>
+
+    <div class="card">
+        <h3>📊 Comparativo entre Áreas</h3>
+        <select id="anoSelect" onchange="atualizarUI()" style="width:100%; background:#0c1a0c; color:white; padding:10px; border:1px solid #2a4b2a; border-radius:12px; margin-bottom:15px;"></select>
+        <canvas id="chartComp"></canvas>
+    </div>
+
+    <footer>João Divino Barbosa © 2026</footer>
+</div>
+
+<script>
+// ─── SUPABASE ────────────────────────────────────────────────
+const SUPABASE_URL = 'https://hcxabapsobefdrzfpjdf.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjeGFiYXBzb2JlZmRyemZwamRmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ5MzIwOTAsImV4cCI6MjA5MDUwODA5MH0.BR_X5yfdBxpQxfPnT8Y8hkz1ijeslcxWPB0fuM28hK8';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+Chart.register(ChartDataLabels);
+let currentFarm = 'fazenda1';
+let charts = {};
+let unidades = {};
+
+// ─── STATUS ──────────────────────────────────────────────────
+function showStatus(msg, tipo = 'ok', ms = 3000) {
+    const bar = document.getElementById('statusBar');
+    bar.textContent = msg;
+    bar.className = `show ${tipo}`;
+    clearTimeout(bar._t);
+    bar._t = setTimeout(() => bar.className = '', ms);
+}
+
+// ─── INIT ────────────────────────────────────────────────────
+window.onload = async () => {
+    document.getElementById('dataChuva').valueAsDate = new Date();
+    povoarAnos();
+    try {
+        document.getElementById('splashMsg').textContent = 'Verificando banco de dados...';
+        const { error } = await db.from('unidades').select('id').limit(1);
+        if (error && (error.code === '42P01' || error.message.includes('does not exist'))) {
+            document.getElementById('sqlInstructions').style.display = 'block';
+            document.getElementById('splashMsg').textContent = '⚠️ Tabelas não encontradas!';
+            return;
+        }
+        if (error) throw error;
+
+        document.getElementById('splashMsg').textContent = 'Carregando unidades...';
+        await carregarUnidades();
+        document.getElementById('splashMsg').textContent = 'Carregando gráficos...';
+        await atualizarUI();
+        document.getElementById('splash').style.display = 'none';
+        showStatus('✅ Conectado ao Supabase!', 'ok');
+    } catch(e) {
+        document.getElementById('splashMsg').textContent = '❌ ' + e.message;
+        console.error(e);
+    }
+    ['nomeFazenda1','nomeFazenda2'].forEach(id => {
+        document.getElementById(id).addEventListener('change', salvarNome);
+    });
+};
+
+// ─── UNIDADES ────────────────────────────────────────────────
+async function carregarUnidades() {
+    const { data, error } = await db.from('unidades').select('*');
+    if (error) throw error;
+    data.forEach(u => { unidades[u.chave] = u; });
+    document.getElementById('nomeFazenda1').value = unidades['fazenda1']?.nome || 'Fazenda 1';
+    document.getElementById('nomeFazenda2').value = unidades['fazenda2']?.nome || 'Fazenda 2';
+    document.getElementById('btnFarm1').textContent  = unidades['fazenda1']?.nome || 'Fazenda 1';
+    document.getElementById('btnFarm2').textContent  = unidades['fazenda2']?.nome || 'Fazenda 2';
+    document.getElementById('labelUnidade').textContent = unidades[currentFarm]?.nome || currentFarm;
+}
+
+async function salvarNome() {
+    const n1 = document.getElementById('nomeFazenda1').value || 'Fazenda 1';
+    const n2 = document.getElementById('nomeFazenda2').value || 'Fazenda 2';
+    await Promise.all([
+        db.from('unidades').update({ nome: n1 }).eq('chave', 'fazenda1'),
+        db.from('unidades').update({ nome: n2 }).eq('chave', 'fazenda2')
+    ]);
+    await carregarUnidades();
+    await atualizarUI();
+    showStatus('✅ Nomes salvos!', 'ok');
+}
+
+function mudarFazenda(f) {
+    currentFarm = f;
+    document.getElementById('btnFarm1').classList.toggle('active', f === 'fazenda1');
+    document.getElementById('btnFarm2').classList.toggle('active', f === 'fazenda2');
+    document.getElementById('labelUnidade').textContent = unidades[f]?.nome || f;
+    atualizarUI();
+}
+
+// ─── REGISTROS ──────────────────────────────────────────────
+async function lancar() {
+    const dataInput = document.getElementById('dataChuva').value;
+    const valor = parseFloat(document.getElementById('valorChuva').value);
+    if (!dataInput || isNaN(valor) || valor < 0) { showStatus('⚠️ Preencha data e valor corretamente.', 'err'); return; }
+    const unidade_id = unidades[currentFarm]?.id;
+    if (!unidade_id) { showStatus('❌ Unidade não carregada.', 'err'); return; }
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled = true; btn.textContent = '⏳ Salvando...';
+    const { error } = await db.from('registros').insert({ unidade_id, data: dataInput, valor_mm: valor });
+    btn.disabled = false; btn.textContent = '💾 SALVAR REGISTRO';
+    if (error) {
+        if (error.code === '23505') showStatus('⚠️ Data já registrada para esta unidade!', 'err');
+        else showStatus('❌ Erro: ' + error.message, 'err');
+        return;
+    }
+    document.getElementById('valorChuva').value = '';
+    showStatus('✅ Registro salvo!', 'ok');
+    await atualizarUI();
+}
+
+async function deletarRegistro(id) {
+    if (!confirm('Remover este registro?')) return;
+    const { error } = await db.from('registros').delete().eq('id', id);
+    if (error) { showStatus('❌ ' + error.message, 'err'); return; }
+    showStatus('🗑️ Removido.', 'info');
+    await atualizarUI();
+}
+
+// ─── ATUALIZAR UI ────────────────────────────────────────────
+async function atualizarUI() {
+    const anoSel = parseInt(document.getElementById('anoSelect').value) || new Date().getFullYear();
+    const hoje   = new Date();
+    const mAtual = hoje.getMonth();
+    const aAtual = hoje.getFullYear();
+
+    // Buscar registros do ano selecionado
+    const { data: regsAno, error: e1 } = await db
+        .from('registros').select('*, unidades(chave)')
+        .gte('data', `${anoSel}-01-01`).lte('data', `${anoSel}-12-31`);
+    if (e1) { showStatus('❌ ' + e1.message, 'err'); return; }
+
+    const dadosF1 = (regsAno||[]).filter(r => r.unidades?.chave === 'fazenda1');
+    const dadosF2 = (regsAno||[]).filter(r => r.unidades?.chave === 'fazenda2');
+    const dadosAtuais = currentFarm === 'fazenda1' ? dadosF1 : dadosF2;
+
+    // ── Registros recentes ──
+    const recentes = [...dadosAtuais].sort((a,b) => b.data.localeCompare(a.data)).slice(0,15);
+    const lista = document.getElementById('registrosLista');
+    lista.innerHTML = recentes.length === 0
+        ? '<p style="color:#555;font-size:13px;text-align:center;margin:20px 0;">Nenhum registro ainda.</p>'
+        : recentes.map(r => `
+            <div class="reg-item">
+                <span class="reg-data">${fmtData(r.data)}</span>
+                <span class="reg-val">${parseFloat(r.valor_mm).toFixed(1)} mm</span>
+                <button class="del-btn" onclick="deletarRegistro(${r.id})">✕</button>
+            </div>`).join('');
+
+    // ── Diário (mês atual, sempre ano atual) ──
+    const diasNoMes = new Date(aAtual, mAtual+1, 0).getDate();
+    const { data: regsMes } = await db.from('registros').select('data, valor_mm, unidades(chave)')
+        .gte('data', `${aAtual}-${pad(mAtual+1)}-01`)
+        .lte('data', `${aAtual}-${pad(mAtual+1)}-${pad(diasNoMes)}`);
+
+    const valDias = Array(diasNoMes).fill(0);
+    let totalM = 0, picoM = 0;
+    (regsMes||[]).filter(r => r.unidades?.chave === currentFarm).forEach(d => {
+        const idx = parseInt(d.data.split('-')[2]) - 1;
+        valDias[idx] += parseFloat(d.valor_mm);
+        totalM += parseFloat(d.valor_mm);
+        if (parseFloat(d.valor_mm) > picoM) picoM = parseFloat(d.valor_mm);
+    });
+    document.getElementById('totalMes').innerText = totalM.toFixed(1) + ' mm';
+    document.getElementById('picoMes').innerText  = picoM.toFixed(1)  + ' mm';
+    renderChart('chartDiario','bar', Array.from({length:diasNoMes},(_,i)=>i+1), [{label:'mm', data:valDias, backgroundColor:'#66bb6a'}]);
+
+    // ── Mensal ──
+    const meses = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+    const pAnual = lista => {
+        const m = Array(12).fill(0); let tot = 0;
+        lista.forEach(d => { const i = parseInt(d.data.split('-')[1])-1; m[i]+=parseFloat(d.valor_mm); tot+=parseFloat(d.valor_mm); });
+        return { m, tot };
+    };
+    const rF1 = pAnual(dadosF1), rF2 = pAnual(dadosF2);
+    renderChart('chartMensal','bar', meses, [{label:'Total mm', data: currentFarm==='fazenda1'?rF1.m:rF2.m, backgroundColor:'#2e7d32'}]);
+
+    // ── Comparativo ──
+    const nF1 = unidades['fazenda1']?.nome||'Fazenda 1';
+    const nF2 = unidades['fazenda2']?.nome||'Fazenda 2';
+    renderChart('chartComp','line', meses, [
+        {label:`${nF1}: ${rF1.tot.toFixed(0)} mm`, data:rF1.m, borderColor:'#66bb6a', backgroundColor:'#66bb6a33', tension:0.3, fill:true},
+        {label:`${nF2}: ${rF2.tot.toFixed(0)} mm`, data:rF2.m, borderColor:'#b3e4ff', backgroundColor:'#b3e4ff33', tension:0.3, fill:true}
+    ]);
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────
+const fmtData = iso => { const [y,m,d]=iso.split('-'); return `${d}/${m}/${y}`; };
+const pad = n => String(n).padStart(2,'0');
+
+function renderChart(id, type, labels, datasets) {
+    if (charts[id]) charts[id].destroy();
+    charts[id] = new Chart(document.getElementById(id).getContext('2d'), {
+        type, data: { labels, datasets },
+        options: {
+            responsive:true, maintainAspectRatio:false,
+            layout:{ padding:{ top:25 } },
+            plugins:{
+                legend:{ display: id==='chartComp', labels:{ color:'#fff', font:{weight:'bold'} } },
+                datalabels:{ anchor:'end', align:'top', color:'#fff', font:{weight:'bold',size:10}, formatter: v => v>0 ? v.toFixed(0) : '', clip:false }
+            },
+            scales:{ y:{grace:'10%', ticks:{color:'#888'}, grid:{color:'#1a331a'}}, x:{ticks:{color:'#888'}, grid:{display:false}} }
+        }
+    });
+}
+
+function povoarAnos() {
+    const s = document.getElementById('anoSelect'); s.innerHTML='';
+    const a = new Date().getFullYear();
+    for (let i=a; i>=a-3; i--) { const o=document.createElement('option'); o.value=i; o.text='Dados de '+i; s.appendChild(o); }
+}
+
+// ─── EXPORTAR / IMPORTAR ─────────────────────────────────────
+async function exportarDados() {
+    showStatus('⏳ Exportando...', 'info', 8000);
+    const { data: regs } = await db.from('registros').select('*, unidades(chave)');
+    const backup = {
+        f1: JSON.stringify((regs||[]).filter(r=>r.unidades?.chave==='fazenda1').map(r=>({data:r.data, valor:r.valor_mm}))),
+        f2: JSON.stringify((regs||[]).filter(r=>r.unidades?.chave==='fazenda2').map(r=>({data:r.data, valor:r.valor_mm}))),
+        n:  JSON.stringify({ fazenda1: unidades['fazenda1']?.nome||'Fazenda 1', fazenda2: unidades['fazenda2']?.nome||'Fazenda 2' })
+    };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(backup,null,2)], {type:'application/json'}));
+    a.download = `chuvas_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.click();
+    showStatus('✅ Exportado!', 'ok');
+}
+
+async function importarDados(file) {
+    if (!file) return;
+    const backup = JSON.parse(await file.text());
+    const nomes = JSON.parse(backup.n||'{}');
+    const f1 = JSON.parse(backup.f1||'[]');
+    const f2 = JSON.parse(backup.f2||'[]');
+    showStatus(`⏳ Importando ${f1.length+f2.length} registros...`, 'info', 20000);
+    if (nomes.fazenda1) await db.from('unidades').update({nome:nomes.fazenda1}).eq('chave','fazenda1');
+    if (nomes.fazenda2) await db.from('unidades').update({nome:nomes.fazenda2}).eq('chave','fazenda2');
+    const upsert = async (lista, chave) => {
+        const uid = unidades[chave]?.id; if(!uid) return;
+        const rows = lista.map(item => ({unidade_id:uid, data:item.data, valor_mm:item.valor}));
+        if (rows.length) await db.from('registros').upsert(rows, {onConflict:'unidade_id,data'});
+    };
+    await upsert(f1,'fazenda1'); await upsert(f2,'fazenda2');
+    await carregarUnidades(); await atualizarUI();
+    showStatus(`✅ ${f1.length+f2.length} registros importados!`, 'ok');
+}
+
+async function limparTudo() {
+    if (!confirm('⚠️ Apagar TODOS os registros do banco?\n\nEsta ação não pode ser desfeita!')) return;
+    const { error } = await db.from('registros').delete().neq('id', 0);
+    if (error) { showStatus('❌ '+error.message,'err'); return; }
+    showStatus('🗑️ Todos os registros removidos.','info');
+    await atualizarUI();
+}
+</script>
+</body>
+</html>
